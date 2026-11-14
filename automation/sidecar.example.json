@@ -1,0 +1,24 @@
+{
+  "builtin": "schedule",
+  "args": [
+    "CRON_TZ=<IANA_TIMEZONE> 0 7 * * *",
+    "agentapi",
+    "new-conversation",
+    "--",
+    "Run the daily ConnectPilot automation located at <ABSOLUTE_REPO_PATH>. Execute `<ABSOLUTE_VENV_PYTHON> <ABSOLUTE_REPO_PATH>/main.py --limit 15` to send 15 connection requests using the dedicated persistent browser profile (never close or modify the user's personal browser). After it finishes, run `<ABSOLUTE_VENV_PYTHON> <ABSOLUTE_REPO_PATH>/cli.py stats` and provide a concise summary including: (1) a numbered list of every person sent a connection request in this run with their clickable LinkedIn profile link formatted as `[Name](https://www.linkedin.com/in/.../)`, (2) any errors encountered, (3) the updated search page saved in .env, and (4) the remaining daily/weekly quota."
+  ],
+  "restart_policy": "always",
+  "display_name": "Daily ConnectPilot",
+  "description": "Every day at 7:00 AM (<IANA_TIMEZONE>), sends 15 LinkedIn connection requests automatically and reports daily/weekly connection statistics.",
+  "agent_permissions": {
+    "workspace_uris": [
+      "file:///<ABSOLUTE_REPO_PATH_FORWARD_SLASHES>"
+    ],
+    "access_grants": [
+      "command(<ABSOLUTE_VENV_PYTHON> <ABSOLUTE_REPO_PATH>/main.py)",
+      "command(<ABSOLUTE_VENV_PYTHON> <ABSOLUTE_REPO_PATH>/cli.py)",
+      "read_file(<ABSOLUTE_REPO_PATH_FORWARD_SLASHES>)",
+      "write_file(<ABSOLUTE_REPO_PATH_FORWARD_SLASHES>)"
+    ]
+  }
+}
