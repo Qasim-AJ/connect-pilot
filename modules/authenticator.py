@@ -118,19 +118,54 @@ class LinkedInAuthenticator:
                     time.sleep(2)
                 return False, "Timed out waiting for login in browser window"
 
-            # If LinkedIn shows a remembered-account card where #username is hidden, switch to full sign-in form
-            username_field = self._wait_and_find_element(By.ID, "username", timeout=6)
-            if not username_field or not username_field.is_displayed():
-                switch_btn = self._wait_and_find_element(
-                    By.XPATH,
-                    "//button[contains(., 'another account') or contains(@class, 'signin-other-account')] | //a[contains(., 'another account')]",
+            # Clear stale incomplete-onboarding cookies if /login redirected away from sign-in
+            if "linkedin.com/onboarding" in (self.driver.current_url or ""):
+                logger.info("Clearing stale onboarding session cookies before credential login")
+                try:
+                    self.driver.delete_all_cookies()
+                except Exception:
+                    pass
+                self.driver.get("https://www.linkedin.com/login")
+                self._human_delay(2, 3)
+
+            username_locators = [
+                (By.ID, "username"),
+                (By.NAME, "session_key"),
+                (By.CSS_SELECTOR, "input[autocomplete='username']"),
+                (By.CSS_SELECTOR, "input[type='email']"),
+                (By.XPATH, "//input[@id='username' or @name='session_key' or @type='email']"),
+            ]
+            password_locators = [
+                (By.ID, "password"),
+                (By.NAME, "session_password"),
+                (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
+                (By.CSS_SELECTOR, "input[type='password']"),
+            ]
+            submit_locators = [
+                (By.XPATH, "//button[@type='submit' and contains(@class, 'btn__primary')]"),
+                (By.XPATH, "//button[@data-litms-control-urn='login-submit']"),
+                (By.XPATH, "//button[@type='submit']"),
+                (By.XPATH, "//button[normalize-space(.)='Sign in']"),
+            ]
+
+            # If LinkedIn shows a remembered-account card where username input is hidden, switch to full sign-in form
+            username_field = self._find_visible_element(username_locators, timeout=6)
+            if not username_field:
+                switch_btn = self._find_visible_element(
+                    [
+                        (
+                            By.XPATH,
+                            "//button[contains(., 'another account') or contains(@class, 'signin-other-account')] "
+                            "| //a[contains(., 'another account')]",
+                        )
+                    ],
                     timeout=3,
                 )
-                if switch_btn and switch_btn.is_displayed():
+                if switch_btn:
                     logger.info("Switching from remembered account card to full sign-in form")
                     switch_btn.click()
                     self._human_delay(1, 2)
-                username_field = self._wait_and_find_element(By.ID, "username", timeout=10)
+                username_field = self._find_visible_element(username_locators, timeout=10)
 
             # Enter username
             logger.info("Entering username")
@@ -142,25 +177,16 @@ class LinkedInAuthenticator:
 
             # Enter password
             logger.info("Entering password")
-            password_field = self._wait_and_find_element(By.ID, "password")
+            password_field = self._find_visible_element(password_locators, timeout=10)
             if not password_field:
                 return False, "Could not find password field"
 
             self._human_type(password_field, password)
             self._human_delay(1, 2)
 
-            # Click login button (with fallback selectors across LinkedIn layouts)
+            # Click login button (supports both classic submit buttons and React SDUI Sign in buttons)
             logger.info("Clicking login button")
-            login_button = None
-            for xp in (
-                "//button[@type='submit' and contains(@class, 'btn__primary')]",
-                "//button[@data-litms-control-urn='login-submit']",
-                "//button[@type='submit']",
-            ):
-                btn = self._wait_and_find_element(By.XPATH, xp, timeout=4)
-                if btn and btn.is_displayed():
-                    login_button = btn
-                    break
+            login_button = self._find_visible_element(submit_locators, timeout=8)
             if not login_button:
                 return False, "Could not find login button"
 
@@ -444,17 +470,18 @@ class LinkedInAuthenticator:
                 (By.ID, "error-for-password"),
                 (By.ID, "error-for-username"),
                 (By.CLASS_NAME, "form__label--error"),
-                (By.XPATH, "//div[@role='alert']"),
+                (By.XPATH, "//*[@role='alert']"),
                 (By.XPATH, "//span[contains(@class, 'error')]")
             ]
 
             for by, value in error_selectors:
                 try:
-                    error_element = self.driver.find_element(by, value)
-                    error_text = error_element.text.strip()
-                    if error_text:
-                        return error_text
-                except NoSuchElementException:
+                    for error_element in self.driver.find_elements(by, value):
+                        if error_element.is_displayed():
+                            error_text = error_element.text.strip()
+                            if error_text and error_text.lower() != "0 notifications":
+                                return error_text
+                except Exception:
                     continue
 
             return None
@@ -462,6 +489,23 @@ class LinkedInAuthenticator:
         except Exception as e:
             logger.error(f"Error getting error message: {str(e)}")
             return None
+
+    def _find_visible_element(self, locators, timeout: int = 10):
+        """
+        Poll across candidate `(By, value)` locators and return the first visible element.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for by, value in locators:
+                try:
+                    for el in self.driver.find_elements(by, value):
+                        if el.is_displayed():
+                            return el
+                except Exception:
+                    continue
+            time.sleep(0.5)
+        logger.warning(f"Visible element not found for locators: {locators}")
+        return None
 
     def _wait_and_find_element(self, by: By, value: str, timeout: int = 10):
         """

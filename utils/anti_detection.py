@@ -513,6 +513,19 @@ class CDPWebDriver:
         except Exception:
             pass
 
+    def delete_all_cookies(self):
+        try:
+            self._send_cdp("Network.clearBrowserCookies", {})
+        except Exception:
+            pass
+
+    def refresh(self):
+        try:
+            self._send_cdp("Page.reload", {})
+            time.sleep(2.5)
+        except Exception:
+            pass
+
     def quit(self):
         # Do NOT close the persistent daemon WebSocket so Edge never re-prompts
         pass
