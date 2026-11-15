@@ -118,9 +118,22 @@ class LinkedInAuthenticator:
                     time.sleep(2)
                 return False, "Timed out waiting for login in browser window"
 
+            # If LinkedIn shows a remembered-account card where #username is hidden, switch to full sign-in form
+            username_field = self._wait_and_find_element(By.ID, "username", timeout=6)
+            if not username_field or not username_field.is_displayed():
+                switch_btn = self._wait_and_find_element(
+                    By.XPATH,
+                    "//button[contains(., 'another account') or contains(@class, 'signin-other-account')] | //a[contains(., 'another account')]",
+                    timeout=3,
+                )
+                if switch_btn and switch_btn.is_displayed():
+                    logger.info("Switching from remembered account card to full sign-in form")
+                    switch_btn.click()
+                    self._human_delay(1, 2)
+                username_field = self._wait_and_find_element(By.ID, "username", timeout=10)
+
             # Enter username
             logger.info("Entering username")
-            username_field = self._wait_and_find_element(By.ID, "username")
             if not username_field:
                 return False, "Could not find username field"
 
@@ -136,12 +149,18 @@ class LinkedInAuthenticator:
             self._human_type(password_field, password)
             self._human_delay(1, 2)
 
-            # Click login button
+            # Click login button (with fallback selectors across LinkedIn layouts)
             logger.info("Clicking login button")
-            login_button = self._wait_and_find_element(
-                By.XPATH,
-                "//button[@type='submit' and contains(@class, 'btn__primary')]"
-            )
+            login_button = None
+            for xp in (
+                "//button[@type='submit' and contains(@class, 'btn__primary')]",
+                "//button[@data-litms-control-urn='login-submit']",
+                "//button[@type='submit']",
+            ):
+                btn = self._wait_and_find_element(By.XPATH, xp, timeout=4)
+                if btn and btn.is_displayed():
+                    login_button = btn
+                    break
             if not login_button:
                 return False, "Could not find login button"
 
